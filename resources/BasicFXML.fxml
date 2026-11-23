@@ -5,9 +5,12 @@
 <?import javafx.scene.layout.AnchorPane?>
 
 <?import javafx.scene.layout.GridPane?>
-<AnchorPane id="AnchorPane" prefHeight="200" prefWidth="320" xmlns:fx="http://javafx.com/fxml/1" xmlns="http://javafx.com/javafx/8" fx:controller="BasicFXMLController">
+<?import javafx.scene.layout.VBox?>
+<VBox id="AnchorPane" prefHeight="200" prefWidth="320" xmlns:fx="http://javafx.com/fxml/1" xmlns="http://javafx.com/javafx/8" fx:controller="BasicFXMLController">
     <children>
         <Label fx:id="label" layoutX="126" layoutY="120" minHeight="16" minWidth="69" />
-        <GridPane fx:id="questions"/>
+        <GridPane fx:id="questionsGrid"/>
+        <Button fx:id="nextButton" onAction="#handleNextButtonPress"/>
+        <Label fx:id="notReadyLabel" text="Finish all of the questions first!" visible="false"/>
     </children>
-</AnchorPane>
+</VBox>

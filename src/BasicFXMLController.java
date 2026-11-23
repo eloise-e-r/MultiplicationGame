@@ -1,32 +1,39 @@
-import java.util.ArrayList;
-import java.util.List;
+import java.time.LocalDate;
+import java.util.*;
 import java.io.IOException;
+
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
+import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
 import javafx.scene.input.KeyCode;
 import javafx.scene.layout.GridPane;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import javafx.scene.text.Text;
 
 
 public class BasicFXMLController {
+    public Label notReadyLabel;
     // 2d array used to determine question frequency. Indicies are used to represent the multiplication questions
     // e.g. multiplicationArray[3][6] represents the question 3x6
-    private List<List<Integer>> multiplicationArray = new ArrayList<List<Integer>>();
+    private List<List<LocalDate>> multiplicationDateArray = new ArrayList<List<LocalDate>>();
 
     // questionRow and questionColumn represent the indicies of the multiplicationArray. Questions are presented one row at a time
     // e.g. row 2 is 2x1, 2x2, ..., 2x11, 2x12
-    private Integer questionRow = 1;
-    private Integer questionColumn = 1;
-
-    private Integer maxTimesTable = 4;
+    private Integer questionsRow = 1;
+    private Integer maxTimesTable = 2;
 
     private JsonNode congratsMessages;
+    private int currentQuestionsComplete = 0;
+    List<List<Question>> questions = generateQuestions();
 
+    public Button nextButton;
     @FXML
-    public GridPane questions;
+    public GridPane questionsGrid = new GridPane();
+    private boolean inRandomSection = false;
+    private int numRandomQuestions;
 
     @FXML
     private Label label;
@@ -34,87 +41,85 @@ public class BasicFXMLController {
     public void initialize() throws IOException {
         ObjectMapper objectMapper = new ObjectMapper();
         congratsMessages = objectMapper.readTree(getClass().getResource("congratulations.json"));
-        generateQuestions();
+        displayQuestionsRow(questions.get(questionsRow));
     }
 
-    @FXML
-    private void handleButtonAction(ActionEvent event) {
-        label.setText("Hello World!");
-    }
-
-    public void generateQuestions() {
-        for (int i = 1; i <= maxTimesTable; i++) {
-            Label question = new Label();
-            question.setText(questionRow.toString() + " x " + i + " = ");
-            questions.add(question, 0,i-1);
+    //TODO should only be done when json file with questions doesn't already exist
+    public List<List<Question>> generateQuestions() {
+        List<List<Question>> questions = new ArrayList<>();
+        for (int i = 0; i <= maxTimesTable; i++) {
+            List<Question> row = new ArrayList<>();
+            for (int j = 0; j <= maxTimesTable; j++) {
+                row.add(new Question(i,j));
+            }
+            questions.add(row);
         }
+        return questions;
+    }
 
-        TextField answer = new TextField();
-        Label errorText = new Label();
-        questions.add(answer, 1, questionColumn -1);
-        answer.setOnKeyPressed(keyEvent -> {
-            if (keyEvent.getCode() == KeyCode.ENTER) {
-                Integer correctAnswer = questionRow * questionColumn;
-                questions.getChildren().remove(errorText);
-                try {
-                    if (Integer.parseInt(answer.getText()) == correctAnswer) {
-                        //TODO change frequency of correct answer
-
-                        // When a question is answered correctly, remove the answer box, replace it with a label with the correct answer,
-                        // and place the answer box next to the question below
-                        questions.getChildren().remove(answer);
-                        Label answerText = new Label();
-                        answerText.setText((questionRow * questionColumn + ""));
-                        Label congratsText = new Label();
-                        congratsText.setText(getCongratsMsg());
-                        questions.add(congratsText, 2, questionColumn - 1);
-                        questions.add(answerText, 1, questionColumn - 1);
-                        answer.clear();
-
-                        // continue with this row
-                        if (questionColumn < maxTimesTable) {
-                            questionColumn++;
-                            questions.add(answer, 1, questionColumn - 1);
-                        }
-
-                        // move on to next row
-                        else if (questionRow < maxTimesTable) {
-                            questions.getChildren().clear();
-                            questionRow++;
-                            questionColumn = 1;
-                            generateQuestions();
-                        }
-
-                        // ordered multiplication questions are complete
-                        else {
-                            //TODO generate random questions
-                        }
-                    }
-                    else {
-                        errorText.setText("Incorrect. Try again!");
-                        questions.add(errorText, 2, questionColumn - 1);
-                    }
-                } catch (NumberFormatException e) {
-                    errorText.setText("Enter a number please!");
-                    questions.add(errorText, 2, questionColumn - 1);
+    public List<Question> generateRandomQuestions() {
+        List<Question> questionsList = new ArrayList<>();
+        for (int i = 0; i <= maxTimesTable; i++) {
+            for (int j = 0; j <= maxTimesTable; j++) {
+                Question question = questions.get(i).get(j);
+                if (question.dueDate.isBefore(LocalDate.now()) || question.dueDate.isEqual(LocalDate.now())) {
+                    questionsList.add(question);
                 }
             }
-        });
+        }
+        Collections.shuffle(questionsList);
+        numRandomQuestions = questionsList.size();
+        return questionsList;
     }
+
+    public void displayQuestionsRow(List<Question> questions) {
+            for (int i = 0; i < questions.size(); i++) {
+                Label errorText = new Label();
+                Question currentQuestion = questions.get(i);
+                int finalI = i;
+                TextField textField = new TextField();
+                textField.setOnKeyPressed(keyEvent -> {
+                    questionsGrid.getChildren().remove(errorText);
+                    if (keyEvent.getCode() == KeyCode.ENTER) {
+                        try {
+                            if (Integer.parseInt(textField.getText()) == currentQuestion.answer) {
+                                questionsGrid.getChildren().remove(textField);
+                                Label answerText = new Label();
+                                answerText.setText(currentQuestion.answer + "");
+                                Label congratsText = new Label();
+                                congratsText.setText(getCongratsMsg());
+                                questionsGrid.add(answerText, 2, finalI);
+                                questionsGrid.add(congratsText, 3, finalI);
+                                currentQuestionsComplete++;
+                            } else {
+                                errorText.setText("Try again!");
+                                questionsGrid.add(errorText, 3, finalI);
+                            }
+                        } catch (NumberFormatException e) {
+                            errorText.setText("Enter a number please!");
+                            questionsGrid.add(errorText, 3, finalI);
+                        }
+                    }
+                });
+                Label equalsLabel = new Label(" = ");
+                questionsGrid.add(currentQuestion.label, 0, i);
+                questionsGrid.add(equalsLabel, 1, i);
+                questionsGrid.add(textField, 2, i);
+            }
+    }
+//                            Integer currentMultiplier = multiplicationMultiplierArray.get(questionRow).get(questionColumn);
+//                            multiplicationDateArray.get(questionRow).set(questionColumn, LocalDate.now().plusDays(currentMultiplier));
+//                            Integer newVal;
+//                            newVal = currentMultiplier * 2;
+//                            multiplicationMultiplierArray.get(questionRow).set(questionColumn, newVal);
 
     public void initializeArray() {
         for (int i = 0; i < 13; i++) {
-            List<Integer> tmpList = new ArrayList<Integer>();
+            List<LocalDate> row = new ArrayList<LocalDate>();
             for (int j = 0; j < 13; j++) {
-                tmpList.add(0);
+                row.add(LocalDate.now());
             }
-            multiplicationArray.add(tmpList);
-        }
-    }
-
-    public void printArray() {
-        for (int i = 0; i < 13; i++) {
-            System.out.println(multiplicationArray.get(i));
+            multiplicationDateArray.add(row);
         }
     }
 
@@ -122,5 +127,29 @@ public class BasicFXMLController {
         int numOfMessages = congratsMessages.size();
         int msgId = (int) Math.floor((Math.random()*numOfMessages));
         return congratsMessages.get(Integer.toString(msgId)).asText();
+    }
+
+    @FXML
+    public void handleNextButtonPress(ActionEvent actionEvent) {
+        notReadyLabel.setVisible(false);
+        if (inRandomSection && currentQuestionsComplete == numRandomQuestions) {
+            // win
+            System.out.println("WIN");
+        }
+        else if (currentQuestionsComplete == maxTimesTable+1) {
+            questionsGrid.getChildren().clear();
+            questionsRow++;
+            if (questionsRow > maxTimesTable) {
+                inRandomSection = true;
+                displayQuestionsRow(generateRandomQuestions());
+            }
+            else {
+                displayQuestionsRow(questions.get(questionsRow));
+            }
+            currentQuestionsComplete = 0;
+        }
+        else {
+            notReadyLabel.setVisible(true);
+        }
     }
 }
