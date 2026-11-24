@@ -1,7 +1,11 @@
+import java.io.File;
 import java.time.LocalDate;
 import java.util.*;
 import java.io.IOException;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
@@ -11,23 +15,18 @@ import javafx.scene.input.KeyCode;
 import javafx.scene.layout.GridPane;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import javafx.scene.text.Text;
 
 
 public class BasicFXMLController {
     public Label notReadyLabel;
-    // 2d array used to determine question frequency. Indicies are used to represent the multiplication questions
-    // e.g. multiplicationArray[3][6] represents the question 3x6
-    private List<List<LocalDate>> multiplicationDateArray = new ArrayList<List<LocalDate>>();
-
-    // questionRow and questionColumn represent the indicies of the multiplicationArray. Questions are presented one row at a time
-    // e.g. row 2 is 2x1, 2x2, ..., 2x11, 2x12
-    private Integer questionsRow = 1;
-    private Integer maxTimesTable = 2;
-
     private JsonNode congratsMessages;
+    public ObjectMapper mapper = new ObjectMapper();
+
+    private Integer questionsRow = 1;
+    private Integer maxTimesTable = 3;
     private int currentQuestionsComplete = 0;
-    List<List<Question>> questions = generateQuestions();
+
+    List<List<Question>> questions = loadQuestions();
 
     public Button nextButton;
     @FXML
@@ -39,22 +38,36 @@ public class BasicFXMLController {
     private Label label;
 
     public void initialize() throws IOException {
-        ObjectMapper objectMapper = new ObjectMapper();
-        congratsMessages = objectMapper.readTree(getClass().getResource("congratulations.json"));
+        congratsMessages = mapper.readTree(getClass().getResource("congratulations.json"));
         displayQuestionsRow(questions.get(questionsRow));
     }
 
-    //TODO should only be done when json file with questions doesn't already exist
-    public List<List<Question>> generateQuestions() {
-        List<List<Question>> questions = new ArrayList<>();
-        for (int i = 0; i <= maxTimesTable; i++) {
-            List<Question> row = new ArrayList<>();
-            for (int j = 0; j <= maxTimesTable; j++) {
-                row.add(new Question(i,j));
-            }
-            questions.add(row);
+    public List<List<Question>> loadQuestions() {
+        mapper.registerModule(new JavaTimeModule());
+        List<List<Question>> questionsList = new ArrayList<>();
+            try {
+                File questionsJsonFile = new File("questions.json");
+                if (questionsJsonFile.exists()) {
+                    questionsList = mapper.readValue(questionsJsonFile, new TypeReference<List<List<Question>>>() {
+                    });
+                }
+                else{
+                    questionsList = new ArrayList<>();
+                    for (int i = 0; i <= maxTimesTable; i++) {
+                        List<Question> row = new ArrayList<>();
+                        for (int j = 0; j <= maxTimesTable; j++) {
+                            Question question = new Question(i, j);
+                            question.dueDate = LocalDate.now();
+                            row.add(question);
+                        }
+                        questionsList.add(row);
+                    }
+                    mapper.writerWithDefaultPrettyPrinter().writeValue(new File("questions.json"), questionsList);
+                }
+            } catch (IOException err) {
+                err.printStackTrace();
         }
-        return questions;
+        return questionsList;
     }
 
     public List<Question> generateRandomQuestions() {
@@ -83,6 +96,12 @@ public class BasicFXMLController {
                     if (keyEvent.getCode() == KeyCode.ENTER) {
                         try {
                             if (Integer.parseInt(textField.getText()) == currentQuestion.answer) {
+                                if (inRandomSection) {
+                                    currentQuestion.dueDate = currentQuestion.dueDate.plusDays(currentQuestion.daysToAdd);
+                                    if (currentQuestion.dateLastFailed == null || !currentQuestion.dateLastFailed.equals(LocalDate.now())) {
+                                        currentQuestion.daysToAdd = currentQuestion.daysToAdd * 2;
+                                    }
+                                }
                                 questionsGrid.getChildren().remove(textField);
                                 Label answerText = new Label();
                                 answerText.setText(currentQuestion.answer + "");
@@ -92,6 +111,8 @@ public class BasicFXMLController {
                                 questionsGrid.add(congratsText, 3, finalI);
                                 currentQuestionsComplete++;
                             } else {
+                                currentQuestion.dateLastFailed = LocalDate.now();
+                                currentQuestion.daysToAdd = 1;
                                 errorText.setText("Try again!");
                                 questionsGrid.add(errorText, 3, finalI);
                             }
@@ -102,25 +123,10 @@ public class BasicFXMLController {
                     }
                 });
                 Label equalsLabel = new Label(" = ");
-                questionsGrid.add(currentQuestion.label, 0, i);
+                questionsGrid.add(new Label(currentQuestion.labelText), 0, i);
                 questionsGrid.add(equalsLabel, 1, i);
                 questionsGrid.add(textField, 2, i);
             }
-    }
-//                            Integer currentMultiplier = multiplicationMultiplierArray.get(questionRow).get(questionColumn);
-//                            multiplicationDateArray.get(questionRow).set(questionColumn, LocalDate.now().plusDays(currentMultiplier));
-//                            Integer newVal;
-//                            newVal = currentMultiplier * 2;
-//                            multiplicationMultiplierArray.get(questionRow).set(questionColumn, newVal);
-
-    public void initializeArray() {
-        for (int i = 0; i < 13; i++) {
-            List<LocalDate> row = new ArrayList<LocalDate>();
-            for (int j = 0; j < 13; j++) {
-                row.add(LocalDate.now());
-            }
-            multiplicationDateArray.add(row);
-        }
     }
 
     public String getCongratsMsg() {
@@ -133,7 +139,11 @@ public class BasicFXMLController {
     public void handleNextButtonPress(ActionEvent actionEvent) {
         notReadyLabel.setVisible(false);
         if (inRandomSection && currentQuestionsComplete == numRandomQuestions) {
-            // win
+            try {
+                mapper.writerWithDefaultPrettyPrinter().writeValue(new File("questions.json"), questions);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
             System.out.println("WIN");
         }
         else if (currentQuestionsComplete == maxTimesTable+1) {
